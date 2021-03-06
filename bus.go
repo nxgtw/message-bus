@@ -10,7 +10,9 @@ import (
 type MessageBus interface {
 	// Publish publishes arguments to the given topic subscribers
 	// Publish block only when the buffer of one of the subscribers is full.
+    SetStopFlag(stop bool)
 	Publish(topic string, args ...interface{})
+    PublishwithRet(topic string, args ...interface{}) bool
 	// Close unsubscribe all handlers from given topic
 	Close(topic string)
 	// Subscribe subscribes to the given topic
@@ -28,6 +30,7 @@ type handler struct {
 
 type messageBus struct {
 	handlerQueueSize int
+    stopByProcess    bool
 	mtx              sync.RWMutex
 	handlers         handlersMap
 }
@@ -43,6 +46,25 @@ func (b *messageBus) Publish(topic string, args ...interface{}) {
 			h.queue <- rArgs
 		}
 	}
+}
+func (b *messageBus) SetStopFlag(stop bool){
+    b.stopByProcess = stop
+}
+func (b *messageBus) PublishwithRet(topic string, args ...interface{}) bool{
+    if b.stopByProcess == true{
+        return false
+    }
+    rArgs := buildHandlerArgs(args)
+
+    b.mtx.RLock()
+    defer b.mtx.RUnlock()
+
+    if hs, ok := b.handlers[topic]; ok {
+        for _, h := range hs {
+            h.queue <- rArgs
+        }
+    }
+    return true
 }
 
 func (b *messageBus) Subscribe(topic string, fn interface{}) error {
